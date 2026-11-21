@@ -20,6 +20,8 @@ No dependencies to install — Node 18+ only.
 
 ## Hosting
 
+Live at **https://webproxy-5ywe8a.freebuff.site** (Cloudflare Worker via Freebuff Sites).
+
 `sites.deploy.json` describes the deployment: it uploads `worker.js` as the Worker entry point and
 the contents of `public/` as static assets. The Worker serves `/`, `/style.css`, `/toolbar.js` and
 `/favicon.ico` from those assets and handles `/s` (search) and `/p/<encoded-url>` (proxy) itself.
