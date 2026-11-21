@@ -48,12 +48,15 @@ Because it is a Worker, the site is reachable from any browser with no server to
 
 - Relative **and** absolute link/asset rewriting (`href`, `src`, `action`, `srcset`, `poster`, etc.)
 - `url(...)` and `@import` rewriting inside CSS and inline `style` attributes
-- Relative URL string literals in JavaScript (`fetch('/api/...')`)
+- Runtime URL shim for `fetch`, `XMLHttpRequest`, `EventSource`, `Worker` and `sendBeacon`, so
+  relative URLs resolve against the original site rather than the proxy origin
+- Safe ES-module rewriting (`import.meta.url` and relative module specifiers only)
 - Redirects (301/302/303/307/308), including POST → GET conversion
 - Cookies via a server-side, per-session jar (logins generally work)
 - GET and POST form submission
 - Stripping CSP / X-Frame-Options / HSTS / meta-CSP that would otherwise block content
 - Neutralising service workers and `target="_blank"` so navigation stays in one tab
+- A WebGPU status badge (`GPU ok` / `GPU -`) in every toolbar, with adapter details on hover
 - Refusing loopback, private, link-local and cloud-metadata targets, on the first request and on
   every redirect hop
 
@@ -62,11 +65,22 @@ Because it is a Worker, the site is reachable from any browser with no server to
 No proxy can make **every** site work. Some sites will still be broken or degraded because:
 
 - Heavy web apps (Google, YouTube, Facebook, Gmail, banks) rely on WebSockets, CORS,
-  service workers, and absolute URLs baked into compiled JS — those are not rewritten.
+  cross-origin iframes, and browser APIs that read `location.origin` — those are not proxied.
 - Some sites detect proxies/bot user agents and block them.
 - Video/audio range requests and WebRTC are not specially handled.
-- Inline scripts that build URLs dynamically (e.g. `'/api/' + id`) can slip through.
+- Code that derives URLs from `location.origin` or `document.baseURI` still sees the proxy origin.
 - Certificate-pinned or intranet-only sites won't load.
+
+### WebGPU
+
+WebGPU runs in **your browser**, not in the proxy, so it does not need proxy-side support.
+It is available when the page is a secure context (the hosted site is HTTPS; localhost counts
+as secure) and your browser/GPU supports it. The `GPU ok` badge in the toolbar confirms it.
+
+The reason WebGPU demos failed before was that the old JavaScript rewriter corrupted their
+large bundles (it rewrote innocent strings like `'/bQ`OG27VO'` into proxy URLs). Bundles are
+now left byte-for-byte intact; only module specifiers and `import.meta.url` are rewritten,
+and the runtime shim handles ordinary `fetch()` calls.
 
 The hosted build also keeps its cookie jar in memory, per Worker isolate. Cloudflare can recycle an
 isolate at any time, so a login on a proxied site may be dropped; the local Node server keeps

@@ -190,6 +190,7 @@ function toolbarHtml() {
     'z-index:2147483647;font:13px/1 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;' +
     'box-shadow:0 2px 8px rgba(0,0,0,.35);">' +
     '<span style="font-weight:700;letter-spacing:.5px;color:#7aa2ff;flex:none;">WB</span>' +
+    '<span id="__wb_gpu" title="WebGPU status" style="font-size:11px;color:#8b93a7;flex:none;">GPU ?</span>' +
     '<button id="__wb_back" title="Back" style="' + btn + '">&#8592;</button>' +
     '<button id="__wb_reload" title="Reload" style="' + btn + '">&#8635;</button>' +
     '<button id="__wb_home" title="Home" style="' + btn + '">&#8962;</button>' +
@@ -243,6 +244,16 @@ function rewriteHtml(html, pageUrl) {
     return name + '=' + q + parts.join(', ') + q;
   });
 
+  // Inline scripts: only fix module specifiers / import.meta.url, never arbitrary strings.
+  out = out.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs, code) => {
+    if (/\bsrc\s*=/i.test(attrs)) return m;
+    const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs);
+    if (type && !/^(text\/javascript|application\/javascript|module|text\/ecmascript)$/i.test(type[1])) {
+      return m;
+    }
+    return '<script' + attrs + '>' + rewriteJsSafe(code, pageUrl) + '</script>';
+  });
+
   out = rewriteCssUrls(out, pageUrl);
 
   out = out.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, (m) => {
@@ -255,12 +266,32 @@ function rewriteHtml(html, pageUrl) {
   return injectToolbar(out, pageUrl);
 }
 
-function rewriteJs(js, pageUrl) {
-  // Rewrite relative URL-looking string literals so fetch('/api/...') works.
-  return String(js).replace(/(["'])((?:\/|\.\/|\.\.\/)[^"'\n]*)\1/g, (m, q, val) => {
-    const r = safeUrl(val, pageUrl);
-    return r ? q + r + q : m;
+// Never rewrite arbitrary string literals: minified bundles contain strings
+// like '/bQ`OG27VO' or '/g,' that merely look like paths. Rewriting those
+// corrupts the script (this broke most modern sites, incl. WebGPU demos).
+// Only module specifiers and import.meta.url are safe to touch here.
+function rewriteJsSafe(js, pageUrl) {
+  let out = String(js);
+
+  out = out.replace(/\bimport\.meta\.url\b/g, 'globalThis.__WB_REAL_BASE');
+
+  const safeSpecifier = (spec) => {
+    if (!/^\.{1,2}\//.test(spec)) return null;
+    if (!/^[\w./?=&%+#~-]+$/.test(spec)) return null;
+    return safeUrl(spec, pageUrl);
+  };
+
+  out = out.replace(/(\bfrom\s*|\bimport\s*\(\s*)(["'])(\.{1,2}\/[^"'\n]+)\2/g, (m, pre, q, spec) => {
+    const r = safeSpecifier(spec);
+    return r ? pre + q + r + q : m;
   });
+
+  out = out.replace(/\bimport\s+(["'])(\.{1,2}\/[^"'\n]+)\1/g, (m, q, spec) => {
+    const r = safeSpecifier(spec);
+    return r ? 'import ' + q + r + q : m;
+  });
+
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -380,7 +411,7 @@ async function rewriteResponse(response, finalUrl, method, session) {
     output = new TextEncoder().encode(rewriteCssUrls(decoder.decode(raw), finalUrl));
   } else if (/javascript/i.test(contentType)) {
     textual = true;
-    output = new TextEncoder().encode(rewriteJs(decoder.decode(raw), finalUrl));
+    output = new TextEncoder().encode(rewriteJsSafe(decoder.decode(raw), finalUrl));
   }
 
   const headers = new Headers();
