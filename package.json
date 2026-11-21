@@ -1,0 +1,10 @@
+{
+  "name": "webproxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A self-contained server-side web proxy with URL rewriting and search.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Web Proxy — Search &amp; Browse</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">Web<span>Proxy</span></div>
+    <div class="badge">same-tab browsing</div>
+  </header>
+
+  <main>
+    <h1>Search the web, stay here.</h1>
+    <p class="sub">Type a search term or paste a full URL — everything loads inside this tab.</p>
+
+    <form action="/s" method="get" class="search-form">
+      <input name="q" placeholder="Search or enter a URL…" autocomplete="off" autofocus spellcheck="false">
+      <select name="engine" aria-label="Search engine">
+        <option value="ddg">DuckDuckGo</option>
+        <option value="bing">Bing</option>
+        <option value="brave">Brave</option>
+      </select>
+      <button type="submit">Go</button>
+    </form>
+
+    <div class="quick">
+      <a href="/p/https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FMain_Page">Wikipedia</a>
+      <a href="/p/https%3A%2F%2Fgithub.com%2F">GitHub</a>
+      <a href="/p/https%3A%2F%2Fwww.bbc.com%2Fnews">BBC News</a>
+      <a href="/p/https%3A%2F%2Fwww.reddit.com%2F">Reddit</a>
+      <a href="/p/https%3A%2F%2Fexample.com%2F">Example.com</a>
+    </div>
+  </main>
+
+  <footer>Self-hosted web proxy · some modern sites may not work perfectly</footer>
+</body>
+</html>
