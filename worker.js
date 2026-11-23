@@ -230,6 +230,11 @@ function injectToolbar(html, pageUrl, session) {
 }
 
 function rewriteAttrs(tag, pageUrl) {
+  // SRI hashes describe the ORIGINAL bytes of a file. This proxy rewrites
+  // module specifiers and import.meta.url, so the hash no longer matches and
+  // the browser silently refuses to run or apply the resource.
+  tag = tag.replace(/\s+integrity\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+
   tag = tag.replace(URL_ATTR_RE, (m, prefix, quote, quoted, unquoted) => {
     const value = decodeEntities(quote ? quoted : unquoted);
     const rewritten = safeUrl(value, pageUrl);

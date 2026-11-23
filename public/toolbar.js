@@ -15,6 +15,39 @@
   globalThis.__WB_REAL_BASE = real.href;
   var currentReal = new URL(real.href);
 
+  /* ---------------- Subresource Integrity ---------------- */
+
+  // An SRI hash describes the original file, but proxied scripts are rewritten
+  // (module specifiers, import.meta.url, location reads), so the browser would
+  // block the resource. Drop integrity attributes, including ones assigned at
+  // runtime by page scripts (e.g. Cloudflare's analytics beacon).
+  try {
+    var origSetAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name) {
+      if (String(name).toLowerCase() === 'integrity') return;
+      return origSetAttribute.apply(this, arguments);
+    };
+
+    ['HTMLScriptElement', 'HTMLLinkElement'].forEach(function (ctor) {
+      var C = globalThis[ctor];
+      if (!C) return;
+      try {
+        Object.defineProperty(C.prototype, 'integrity', {
+          get: function () { return ''; },
+          set: function () {},
+          configurable: true
+        });
+      } catch (e) {}
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var nodes = document.querySelectorAll('[integrity]');
+      for (var i = 0; i < nodes.length; i++) {
+        try { nodes[i].removeAttribute('integrity'); } catch (e) {}
+      }
+    });
+  } catch (e) {}
+
   /* ---------------- document.cookie emulation ---------------- */
 
   function parseCookies(s) {
