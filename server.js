@@ -9,10 +9,11 @@
  */
 
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import worker from './worker.js';
+import worker, { isBlockedTarget } from './worker.js';
 
 const PUBLIC_DIR = path.resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 
@@ -74,8 +75,10 @@ const ASSET_ENV = { ASSETS: { fetch: fetchAsset } };
 /* ------------------------------------------------------------------ */
 
 const FORWARDED_REQUEST_HEADERS = [
-  'cookie', 'accept', 'accept-language', 'content-type', 'range',
-  'referer', 'authorization', 'x-requested-with', 'user-agent'
+  'cookie', 'accept', 'accept-language', 'accept-charset', 'content-type', 'range',
+  'referer', 'authorization', 'x-requested-with', 'user-agent',
+  'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site',
+  'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'
 ];
 
 function readBody(req) {
@@ -124,6 +127,180 @@ async function sendResponse(res, response, method) {
 }
 
 /* ------------------------------------------------------------------ */
+/* WebSocket bridge                                                    */
+/* ------------------------------------------------------------------ */
+
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+
+function encodeFrame(opcode, payload) {
+  const len = payload.length;
+  let header;
+  if (len < 126) {
+    header = Buffer.alloc(2);
+    header[1] = len;
+  } else if (len < 65536) {
+    header = Buffer.alloc(4);
+    header[1] = 126;
+    header.writeUInt16BE(len, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(len), 2);
+  }
+  header[0] = 0x80 | opcode;
+  return Buffer.concat([header, payload]);
+}
+
+function readFrames(buffer, onFrame) {
+  let offset = 0;
+  while (offset + 2 <= buffer.length) {
+    const b0 = buffer[offset];
+    const b1 = buffer[offset + 1];
+    const fin = (b0 & 0x80) !== 0;
+    const opcode = b0 & 0x0f;
+    const masked = (b1 & 0x80) !== 0;
+    let len = b1 & 0x7f;
+    let pos = offset + 2;
+
+    if (len === 126) {
+      if (pos + 2 > buffer.length) return offset;
+      len = buffer.readUInt16BE(pos);
+      pos += 2;
+    } else if (len === 127) {
+      if (pos + 8 > buffer.length) return offset;
+      len = Number(buffer.readBigUInt64BE(pos));
+      pos += 8;
+    }
+
+    let mask = null;
+    if (masked) {
+      if (pos + 4 > buffer.length) return offset;
+      mask = buffer.slice(pos, pos + 4);
+      pos += 4;
+    }
+    if (pos + len > buffer.length) return offset;
+
+    let payload = buffer.slice(pos, pos + len);
+    if (masked) {
+      payload = Buffer.from(payload);
+      for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
+    }
+
+    onFrame({ fin, opcode, payload });
+    offset = pos + len;
+  }
+  return offset;
+}
+
+function handleUpgrade(req, socket) {
+  let parsed;
+  try { parsed = new URL('http://' + (req.headers.host || 'localhost') + req.url); } catch (_) {
+    socket.destroy();
+    return;
+  }
+
+  let target;
+  try { target = decodeURIComponent(parsed.pathname.slice(4)); } catch (_) {
+    socket.destroy();
+    return;
+  }
+  target = target.replace(/^ws:/i, 'http:').replace(/^wss:/i, 'https:');
+  if (isBlockedTarget(target) || !/^https?:\/\//i.test(target)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const protocols = parsed.searchParams.get('protocols');
+  let upstream;
+  try {
+    upstream = protocols ? new WebSocket(target, protocols.split(',')) : new WebSocket(target);
+  } catch (_) {
+    socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  upstream.binaryType = 'arraybuffer';
+
+  let handshaken = false;
+  function handshake(protocol) {
+    if (handshaken) return;
+    handshaken = true;
+    const key = String(req.headers['sec-websocket-key'] || '');
+    const accept = createHash('sha1').update(key + WS_GUID).digest('base64');
+    let head = 'HTTP/1.1 101 Switching Protocols\r\n' +
+      'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
+      'Sec-WebSocket-Accept: ' + accept + '\r\n';
+    if (protocol) head += 'Sec-WebSocket-Protocol: ' + protocol + '\r\n';
+    socket.write(head + '\r\n');
+  }
+
+  upstream.onopen = () => handshake(upstream.protocol || '');
+  upstream.onerror = () => {
+    if (!handshaken) socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+  };
+  upstream.onmessage = (event) => {
+    if (!handshaken) return;
+    const payload = Buffer.from(typeof event.data === 'string'
+      ? event.data
+      : new Uint8Array(event.data));
+    try { socket.write(encodeFrame(typeof event.data === 'string' ? 0x1 : 0x2, payload)); } catch (_) {}
+  };
+  upstream.onclose = (event) => {
+    if (!handshaken) { socket.destroy(); return; }
+    const code = event.code || 1000;
+    const body = Buffer.alloc(2);
+    body.writeUInt16BE(code, 0);
+    try { socket.end(encodeFrame(0x8, body)); } catch (_) {}
+  };
+
+  let pending = Buffer.alloc(0);
+  let fragments = [];
+  let fragmentOpcode = 0;
+
+  function sendToUpstream(opcode, data) {
+    try {
+      upstream.send(opcode === 0x2 || opcode === 0x0 ? new Uint8Array(data) : data.toString('utf8'));
+    } catch (_) {}
+  }
+
+  socket.on('data', (chunk) => {
+    pending = Buffer.concat([pending, chunk]);
+    const consumed = readFrames(pending, (frame) => {
+      if (frame.opcode === 0x8) {
+        try { upstream.close(); } catch (_) {}
+        socket.end();
+        return;
+      }
+      if (frame.opcode === 0x9) {
+        try { socket.write(encodeFrame(0x0a, frame.payload)); } catch (_) {}
+        return;
+      }
+      if (frame.opcode === 0x0a) return;
+      if (frame.opcode === 0x0) {
+        fragments.push(frame.payload);
+        if (frame.fin) {
+          const data = Buffer.concat(fragments);
+          fragments = [];
+          sendToUpstream(fragmentOpcode, data);
+        }
+        return;
+      }
+      if (!frame.fin) {
+        fragmentOpcode = frame.opcode;
+        fragments = [frame.payload];
+        return;
+      }
+      sendToUpstream(frame.opcode, frame.payload);
+    });
+    pending = pending.slice(consumed);
+  });
+  socket.on('close', () => { try { upstream.close(); } catch (_) {} });
+  socket.on('error', () => { try { upstream.close(); } catch (_) {} });
+}
+
+/* ------------------------------------------------------------------ */
 /* Server                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -139,6 +316,8 @@ const server = http.createServer(async (req, res) => {
     res.end('Server error: ' + (err && err.message ? err.message : String(err)));
   }
 });
+
+server.on('upgrade', handleUpgrade);
 
 server.listen(PORT, HOST, () => {
   console.log('Web proxy running at http://localhost:' + PORT);

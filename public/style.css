@@ -116,3 +116,15 @@ p.sub { margin: 0 0 30px; color: #97a0b5; font-size: 15px; text-align: center; }
 .quick a:hover { color: #fff; border-color: #7aa2ff; }
 
 footer { text-align: center; color: #6f7a91; font-size: 12px; padding: 18px; }
+
+/* Search results page */
+.search-main { justify-content: flex-start; padding-top: 60px; width: min(860px, 100%); margin: 0 auto; }
+.search-main .search-form { margin-bottom: 26px; }
+.results { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+.result { padding: 14px 16px; background: #111722; border: 1px solid #2c3446; border-radius: 10px; }
+.result .title { display: block; color: #8fb4ff; font-size: 17px; text-decoration: none; margin-bottom: 3px; }
+.result .title:hover { text-decoration: underline; }
+.result .url { color: #6f9d6a; font-size: 12px; word-break: break-all; margin-bottom: 6px; }
+.result .snippet { color: #b9c2d6; font-size: 14px; }
+.empty { color: #97a0b5; }
+.empty a { color: #8fb4ff; }
