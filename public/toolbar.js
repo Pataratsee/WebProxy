@@ -22,10 +22,10 @@
   // block the resource. Drop integrity attributes, including ones assigned at
   // runtime by page scripts (e.g. Cloudflare's analytics beacon).
   try {
-    var origSetAttribute = Element.prototype.setAttribute;
+    var nativeSetAttributeSRI = Element.prototype.setAttribute;
     Element.prototype.setAttribute = function (name) {
       if (String(name).toLowerCase() === 'integrity') return;
-      return origSetAttribute.apply(this, arguments);
+      return nativeSetAttributeSRI.apply(this, arguments);
     };
 
     ['HTMLScriptElement', 'HTMLLinkElement'].forEach(function (ctor) {
