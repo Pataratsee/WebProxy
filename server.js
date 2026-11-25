@@ -1,5 +1,5 @@
 /*
- * Node entry point for WebProxy.
+ * Node entry point for Classroom Browser.
  *
  * Adapts node:http to the fetch handler in worker.js, so the site behaves the
  * same locally as it does on Cloudflare Workers.

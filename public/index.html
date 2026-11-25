@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Web Proxy — Search &amp; Browse</title>
+  <title>Classroom Web Browser — Search &amp; Browse</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
-    <div class="brand">Web<span>Proxy</span></div>
-    <div class="badge">proxy + real browser</div>
+    <div class="brand">Classroom<span>Browser</span></div>
+    <div class="badge">school web tool</div>
   </header>
 
   <main>
-    <h1>Search the web, stay here.</h1>
-    <p class="sub">Type a search term or paste a full URL — everything loads inside this tab.</p>
+    <h1>Open websites for class work.</h1>
+    <p class="sub">Search the web or paste a lesson link — pages open inside this same tab.</p>
 
     <form action="/s" method="get" class="search-form">
-      <input name="q" placeholder="Search or enter a URL…" autocomplete="off" autofocus spellcheck="false">
+      <input name="q" placeholder="Search or enter a website address…" autocomplete="off" autofocus spellcheck="false">
       <select name="engine" aria-label="Search engine">
         <option value="ddg">DuckDuckGo</option>
         <option value="bing">Bing</option>
@@ -26,12 +26,12 @@
     </form>
 
     <section class="mode">
-      <h2>YouTube, ChatGPT and other heavy sites</h2>
-      <p>Open them in real Chrome mode. It runs a real browser and streams the page into this tab,
-         so the site sees Chrome instead of a proxy. Requires the local Node server.</p>
+      <h2>Video, chat and full websites</h2>
+      <p>Some lesson sites need a full browser. Open them here and the page is shown in this tab.
+         Requires the local Node server.</p>
       <form action="/b/new" method="get" class="search-form">
-        <input name="url" placeholder="Paste a URL for Chrome mode…" autocomplete="off" spellcheck="false">
-        <button type="submit">Open in Chrome mode</button>
+        <input name="url" placeholder="Paste a website address for full browser mode…" autocomplete="off" spellcheck="false">
+        <button type="submit">Open Full Browser</button>
       </form>
       <div class="quick">
         <a href="/b/new?url=https%3A%2F%2Fwww.youtube.com%2F">YouTube</a>
@@ -47,8 +47,14 @@
       <a href="/p/https%3A%2F%2Fwww.reddit.com%2F">Reddit</a>
       <a href="/p/https%3A%2F%2Fexample.com%2F">Example.com</a>
     </div>
+
+    <section class="trust">
+      <strong>Educational use only.</strong> This browser is provided for classroom research and
+      lessons. It is maintained by the site administrator. Questions? Ask your teacher or the
+      administrator for this site.
+    </section>
   </main>
 
-  <footer>Self-hosted web proxy · rewriting mode for normal sites · Chrome mode for heavy sites</footer>
+  <footer>Classroom Web Browser · educational use only</footer>
 </body>
 </html>

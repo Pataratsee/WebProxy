@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A self-hosted browser-in-a-site: rewriting proxy plus Node-only real Chrome mode.",
+  "description": "Classroom Browser: a self-hosted browser-in-a-site with a rewriting proxy and Node-only full browser mode.",
   "scripts": {
     "start": "node server.js"
   }

@@ -1,4 +1,4 @@
-# WebProxy
+# Classroom Browser
 
 A self-hosted browsing layer that keeps people **inside your own site, in the same tab**. It is not
 an anonymity tool — it is just a browser that lives inside your website.
@@ -31,8 +31,8 @@ Playwright's cache, `google-chrome`, or `chromium`. You can force one with:
 CHROME_PATH=/path/to/chrome PORT=3456 npm start
 ```
 
-Open `http://localhost:3456/b/new?url=https://www.youtube.com/` to jump straight into Chrome mode,
-or use the buttons on the home page.
+Open `http://localhost:3456/b/new?url=https://www.youtube.com/` to jump straight into full browser
+mode, or use the buttons on the home page.
 
 ## Browser-mode performance
 
@@ -71,6 +71,7 @@ BROWSER_ANGLE=gl                 # override ANGLE backend
 BROWSER_GPU_COMPOSITING=1        # re-enable GPU compositing (usually slower)
 BROWSER_GPU_RASTERIZATION=1      # opt into GPU rasterization
 BROWSER_GPU_STATUS=0             # skip WebGPU adapter check
+BROWSER_ANTI_BOT=0               # disable navigator.webdriver/chrome shims if a filter flags them
 BROWSER_EXTRA_FLAGS="--flag=x"   # extra Chromium launch flags
 ```
 
@@ -84,7 +85,23 @@ the contents of `public/` as static assets. The Worker serves `/`, `/style.css`,
 
 Because it is a Worker, the rewriting-proxy part of the site is reachable from any browser with no
 server to keep running. **Real browser mode is not available on the Worker** — Chromium cannot run
-inside a Cloudflare Worker. Use the local Node server for YouTube/ChatGPT mode.
+inside a Cloudflare Worker. Use the local Node server for full browser mode.
+
+## About school web filters
+
+Some school filters (including Linewize/Family Zone) place general-purpose web proxies in a
+**Proxies and VPNs** category, and content analysis can flag a page by its visible wording even when
+the host has a clean reputation. This project is a real browser/proxy, so that category is not
+purely a false positive. The served pages therefore use neutral educational branding and avoid
+"VPN", "unblock" or "bypass" language, and the optional `BROWSER_ANTI_BOT=0` switch can remove
+Chromium automation shims if a filter flags them.
+
+No site-side change can reliably defeat an explicitly blocked domain, locked policy, TLS inspection,
+or network-level enforcement. The reliable path is to have a teacher or administrator request a
+category reclassification and a narrow allow rule for the exact hostname. A stable owned domain with
+visible educational sponsorship and a valid HTTPS certificate helps more than a free random
+subdomain. Attempting to evade a school filter may also violate acceptable-use policies and is
+logged by the filter.
 
 ## Project files
 
@@ -99,8 +116,8 @@ inside a Cloudflare Worker. Use the local Node server for YouTube/ChatGPT mode.
 ## How to use
 
 - Type a search term or paste a full URL into the box on the home page.
-- For YouTube, ChatGPT, Google or any site that breaks in rewriting mode, click **Open in Chrome
-  mode** on the home page. The canvas fills the **entire tab** with no margins, and the headless
+- For YouTube, ChatGPT, Google or any site that breaks in rewriting mode, click **Open Full
+  Browser** on the home page. The canvas fills the **entire tab** with no margins, and the headless
   Chromium window is resized so its viewport matches your screen exactly. Every frame is drawn at a
   1:1 size with the canvas — no stretching, no upscaling, no letterboxing — so sites look the same
   size as they would in a normal browser. The toolbar auto-hides at the bottom so it does

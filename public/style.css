@@ -130,6 +130,20 @@ p.sub { margin: 0 0 30px; color: #97a0b5; font-size: 15px; text-align: center; }
 .mode .search-form { box-shadow: none; background: #0c1018; padding: 8px; }
 .mode .quick { margin-top: 14px; }
 
+.trust {
+  width: min(720px, 100%);
+  margin-top: 26px;
+  padding: 14px 16px;
+  border: 1px solid #2f6a41;
+  border-radius: 10px;
+  background: #101a15;
+  color: #a9c6b3;
+  font-size: 13px;
+  text-align: center;
+}
+
+.trust strong { color: #8be29a; }
+
 footer { text-align: center; color: #6f7a91; font-size: 12px; padding: 18px; }
 
 /* Search results page */

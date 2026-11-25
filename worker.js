@@ -1,5 +1,5 @@
 /*
- * WebProxy core.
+ * Classroom Browser proxy core.
  *
  * A dependency-free web proxy: it fetches pages on the server, rewrites
  * links/assets/scripts so navigation stays on this origin, keeps a
@@ -192,7 +192,7 @@ function toolbarHtml() {
     'display:flex;align-items:center;gap:6px;padding:0 8px;background:#171a21;color:#e8eaf0;' +
     'z-index:2147483647;font:13px/1 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;' +
     'box-shadow:0 2px 8px rgba(0,0,0,.35);">' +
-    '<span style="font-weight:700;letter-spacing:.5px;color:#7aa2ff;flex:none;">WB</span>' +
+    '<span style="font-weight:700;letter-spacing:.5px;color:#7aa2ff;flex:none;">CB</span>' +
     '<span id="__wb_gpu" title="WebGPU status" style="font-size:11px;color:#8b93a7;flex:none;">GPU ?</span>' +
     '<button id="__wb_back" title="Back" style="' + btn + '">&#8592;</button>' +
     '<button id="__wb_reload" title="Reload" style="' + btn + '">&#8635;</button>' +
@@ -660,9 +660,9 @@ function searchPage(query, engine, data) {
 
   return '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + esc(query) + ' — WebProxy Search</title>' +
+    '<title>' + esc(query) + ' — Classroom Browser Search</title>' +
     '<link rel="stylesheet" href="/style.css"></head><body>' +
-    '<header><div class="brand">Web<span>Proxy</span></div>' +
+    '<header><div class="brand">Classroom<span>Browser</span></div>' +
     '<div class="badge">search</div></header>' +
     '<main class="search-main">' +
       '<form action="/s" method="get" class="search-form">' +
@@ -818,12 +818,17 @@ const worker = {
 
       // Real browser mode needs Chromium, so it only exists in the Node server.
       if (pathname === '/b/new' || pathname.startsWith('/b/') || pathname.startsWith('/bws/')) {
+        const requested = url.searchParams.get('url') || '';
+        const fallback = /^https?:\/\//i.test(requested)
+          ? '<p><a href="' + escapeHtml(proxyUrl(requested)) + '">Open this address in standard web mode</a></p>'
+          : '';
         return new Response(
           '<!doctype html><meta charset="utf-8"><title>Browser mode unavailable</title>' +
           '<h1>Browser mode unavailable</h1>' +
-          '<p>Real Chrome mode needs the local Node server with Chromium installed. ' +
+          '<p>Full browser mode needs the local Node server with Chromium installed. ' +
           'Run <code>PORT=3456 npm start</code> and open <code>http://localhost:3456</code>.</p>' +
-          '<p><a href="/">Back to WebProxy</a></p>',
+          fallback +
+          '<p><a href="/">Back to Classroom Browser</a></p>',
           { status: 501, headers: { 'content-type': 'text/html; charset=utf-8' } }
         );
       }

@@ -27,6 +27,7 @@ const ANGLE_BACKEND = process.env.BROWSER_ANGLE || (GPU_MODE === 'off' ? '' : GP
 const GPU_RASTERIZATION = process.env.BROWSER_GPU_RASTERIZATION === '1';
 const GPU_COMPOSITING = process.env.BROWSER_GPU_COMPOSITING === '1';
 const GPU_STATUS = process.env.BROWSER_GPU_STATUS !== '0';
+const ANTI_BOT = process.env.BROWSER_ANTI_BOT !== '0';
 const MAX_SESSIONS = 12;
 
 const sessions = new Map();
@@ -287,9 +288,11 @@ class BrowserSession {
       userAgent: await chromeUserAgent(session.cdp),
       acceptLanguage: 'en-US,en;q=0.9'
     });
-    await session.cdp.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: ANTI_BOT_BOOTSTRAP
-    });
+    if (ANTI_BOT) {
+      await session.cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: ANTI_BOT_BOOTSTRAP
+      });
+    }
     await session.cdp.send('Emulation.setDeviceMetricsOverride',
       deviceMetrics(session.width, session.height));
     await session.navigate(input);
@@ -614,18 +617,18 @@ export function browserErrorPage(message) {
   }[c]));
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Browser mode unavailable — WebProxy</title>
+<title>Browser mode unavailable — Classroom Browser</title>
 <link rel="stylesheet" href="/style.css"></head>
 <body><main><h1>Browser mode unavailable</h1>
 <p class="sub">${text}</p>
-<p class="sub"><a href="/">Back to WebProxy</a></p></main></body></html>`;
+<p class="sub"><a href="/">Back to Classroom Browser</a></p></main></body></html>`;
 }
 
 export function browserPage(id) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WebProxy Browser</title>
+<title>Classroom Web Browser</title>
 <style>
 html,body{margin:0;width:100%;height:100%;background:#000;color:#e8eaf0;font:13px system-ui,sans-serif;overflow:hidden}
 #wrap{position:fixed;inset:0;overflow:hidden;background:#000}
@@ -645,13 +648,13 @@ button:disabled{opacity:.4;cursor:default}
   <button id="back" title="Back">&#8592;</button>
   <button id="forward" title="Forward">&#8594;</button>
   <button id="reload" title="Reload">&#8635;</button>
-  <button id="home" title="WebProxy home">&#8962;</button>
+  <button id="home" title="Classroom Browser home">&#8962;</button>
   <button id="full" title="Fullscreen">&#9974;</button>
   <span id="gpu" title="WebGPU status">GPU …</span>
   <span id="status">connecting…</span>
   <input id="url" spellcheck="false" autocomplete="off" aria-label="Address bar">
   <button id="go">Go</button>
-  <button id="proxy" title="Open with the rewriting proxy instead">Proxy mode</button>
+  <button id="proxy" title="Open in standard web mode">Standard mode</button>
 </div>
 <div id="wrap"><canvas id="screen" width="1280" height="800" tabindex="0"></canvas></div>
 <script>
@@ -750,7 +753,7 @@ button:disabled{opacity:.4;cursor:default}
       }
     } else if(m.type==='info'){
       if(document.activeElement!==input) input.value=m.url||'';
-      document.title=(m.title||'WebProxy Browser')+' — WebProxy';
+      document.title=(m.title||'Classroom Browser')+' — Classroom Browser';
       back.disabled=!m.canBack;
       forward.disabled=!m.canForward;
     }
