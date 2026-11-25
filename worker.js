@@ -816,6 +816,18 @@ const worker = {
       if (pathname === '/__wb/cookie') return await handleCookieWrite(request, url);
       if (pathname.startsWith('/ws/')) return await handleWebSocket(request, url);
 
+      // Real browser mode needs Chromium, so it only exists in the Node server.
+      if (pathname === '/b/new' || pathname.startsWith('/b/') || pathname.startsWith('/bws/')) {
+        return new Response(
+          '<!doctype html><meta charset="utf-8"><title>Browser mode unavailable</title>' +
+          '<h1>Browser mode unavailable</h1>' +
+          '<p>Real Chrome mode needs the local Node server with Chromium installed. ' +
+          'Run <code>PORT=3456 npm start</code> and open <code>http://localhost:3456</code>.</p>' +
+          '<p><a href="/">Back to WebProxy</a></p>',
+          { status: 501, headers: { 'content-type': 'text/html; charset=utf-8' } }
+        );
+      }
+
       if (pathname.startsWith('/p/')) {
         let target;
         try {

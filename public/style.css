@@ -115,6 +115,21 @@ p.sub { margin: 0 0 30px; color: #97a0b5; font-size: 15px; text-align: center; }
 
 .quick a:hover { color: #fff; border-color: #7aa2ff; }
 
+.mode {
+  width: min(720px, 100%);
+  margin-top: 34px;
+  padding: 18px;
+  border: 1px solid #2c3446;
+  border-radius: 14px;
+  background: #111722;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+}
+
+.mode h2 { margin: 0 0 4px; font-size: 17px; }
+.mode p { margin: 0 0 14px; color: #97a0b5; font-size: 13px; text-align: center; }
+.mode .search-form { box-shadow: none; background: #0c1018; padding: 8px; }
+.mode .quick { margin-top: 14px; }
+
 footer { text-align: center; color: #6f7a91; font-size: 12px; padding: 18px; }
 
 /* Search results page */

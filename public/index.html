@@ -9,7 +9,7 @@
 <body>
   <header>
     <div class="brand">Web<span>Proxy</span></div>
-    <div class="badge">same-tab browsing</div>
+    <div class="badge">proxy + real browser</div>
   </header>
 
   <main>
@@ -25,6 +25,21 @@
       <button type="submit">Go</button>
     </form>
 
+    <section class="mode">
+      <h2>YouTube, ChatGPT and other heavy sites</h2>
+      <p>Open them in real Chrome mode. It runs a real browser and streams the page into this tab,
+         so the site sees Chrome instead of a proxy. Requires the local Node server.</p>
+      <form action="/b/new" method="get" class="search-form">
+        <input name="url" placeholder="Paste a URL for Chrome mode…" autocomplete="off" spellcheck="false">
+        <button type="submit">Open in Chrome mode</button>
+      </form>
+      <div class="quick">
+        <a href="/b/new?url=https%3A%2F%2Fwww.youtube.com%2F">YouTube</a>
+        <a href="/b/new?url=https%3A%2F%2Fchatgpt.com%2F">ChatGPT</a>
+        <a href="/b/new?url=https%3A%2F%2Fwww.google.com%2F">Google</a>
+      </div>
+    </section>
+
     <div class="quick">
       <a href="/p/https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FMain_Page">Wikipedia</a>
       <a href="/p/https%3A%2F%2Fgithub.com%2F">GitHub</a>
@@ -34,6 +49,6 @@
     </div>
   </main>
 
-  <footer>Self-hosted web proxy · some modern sites may not work perfectly</footer>
+  <footer>Self-hosted web proxy · rewriting mode for normal sites · Chrome mode for heavy sites</footer>
 </body>
 </html>

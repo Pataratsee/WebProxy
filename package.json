@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A self-contained server-side web proxy with URL rewriting and search.",
+  "description": "A self-hosted browser-in-a-site: rewriting proxy plus Node-only real Chrome mode.",
   "scripts": {
     "start": "node server.js"
   }

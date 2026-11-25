@@ -1,22 +1,78 @@
 # WebProxy
 
-A small, dependency-free web proxy that loads websites **inside your own site, in the same tab**.
-It fetches pages on the server, rewrites links, assets, forms and scripts to route back through the
-proxy, keeps a per-session cookie jar, follows redirects, and injects a navigation bar into every page.
+A self-hosted browsing layer that keeps people **inside your own site, in the same tab**. It is not
+an anonymity tool — it is just a browser that lives inside your website.
+
+It has two modes:
+
+- **Rewriting proxy** — fetches pages server-side, rewrites links/assets/forms/scripts back through
+  the proxy, keeps a cookie jar, and injects a bottom navigation bar. Runs on both Node and the
+  Cloudflare Worker.
+- **Real browser mode** — runs an actual headless Chromium, streams screenshots into the page, and
+  forwards mouse/keyboard input. YouTube, ChatGPT, Google and other heavy apps see a real Chrome
+  browser instead of a proxy. This mode is **Node-only**.
 
 The proxy logic lives in one module and runs in two places:
 
 - `worker.js` — the core, exported as a Cloudflare Worker `fetch` handler (this is what is hosted)
-- `server.js` — a thin Node adapter so the exact same site runs locally
+- `server.js` — a Node adapter that serves the site and owns real browser mode
 
 ## Run locally
 
 ```bash
-npm start          # http://localhost:3000
-PORT=8080 npm start
+PORT=3456 npm start   # http://localhost:3456
 ```
 
-No dependencies to install — Node 18+ only.
+No npm dependencies to install. Node **22+** is required because the server uses the built-in
+`WebSocket` class. Real browser mode also needs a Chrome/Chromium binary; it is auto-detected from
+Playwright's cache, `google-chrome`, or `chromium`. You can force one with:
+
+```bash
+CHROME_PATH=/path/to/chrome PORT=3456 npm start
+```
+
+Open `http://localhost:3456/b/new?url=https://www.youtube.com/` to jump straight into Chrome mode,
+or use the buttons on the home page.
+
+## Browser-mode performance
+
+Real browser mode uses Chromium's **push screencast** instead of repeatedly taking screenshots:
+frames are sent only when the page actually changes, acknowledged immediately, and encoded as WebP.
+The address bar/title is polled separately every 700 ms and only sent when it changes, so it does not
+add a CDP round trip to every frame. In the page, frames are decoded with `createImageBitmap` and
+stale queued frames are dropped instead of piling up. Resizing the tab resizes the real Chromium
+window (not just the emulated viewport) and restarts screencast at the new dimensions, so every frame
+arrives at exactly the canvas size. Frames are drawn with aspect ratio preserved and centred instead
+of being stretched to fill, so a site never looks zoomed in or distorted.
+
+Measured locally: first frame in ~50–460 ms. Frame gaps depend on how much the page actually
+changes — static pages send almost nothing, while animating pages send frames continuously. If your
+Chromium build does not support screencast, it automatically falls back to ~8 fps polling.
+
+### WebGPU
+
+Real browser mode launches Chromium with WebGPU enabled (`--enable-unsafe-webgpu`) and a `GPU`
+badge in the browser bar shows live adapter status. It deliberately disables GPU **compositing**
+while keeping WebGPU available — that combination measured much faster for screencast frames than
+software compositing. GPU detection runs one second after the first frame so it never delays the
+initial paint. On this machine the badge reads `GPU swiftshader`; on a machine with a real GPU it
+will show that adapter instead.
+
+Optional environment variables:
+
+```bash
+BROWSER_SCREENCAST_FORMAT=webp   # or jpeg
+BROWSER_QUALITY=70               # 30-100
+BROWSER_INFO_MS=700              # address-bar poll interval
+BROWSER_FRAME_MS=120             # fallback poll interval
+BROWSER_DISABLE_SCREENCAST=1     # force fallback mode
+BROWSER_GPU=gl                   # gl (default), swiftshader, or off
+BROWSER_ANGLE=gl                 # override ANGLE backend
+BROWSER_GPU_COMPOSITING=1        # re-enable GPU compositing (usually slower)
+BROWSER_GPU_RASTERIZATION=1      # opt into GPU rasterization
+BROWSER_GPU_STATUS=0             # skip WebGPU adapter check
+BROWSER_EXTRA_FLAGS="--flag=x"   # extra Chromium launch flags
+```
 
 ## Hosting
 
@@ -26,12 +82,15 @@ Live at **https://webproxy-5ywe8a.freebuff.site** (Cloudflare Worker via Freebuf
 the contents of `public/` as static assets. The Worker serves `/`, `/style.css`, `/toolbar.js` and
 `/favicon.ico` from those assets and handles `/s` (search) and `/p/<encoded-url>` (proxy) itself.
 
-Because it is a Worker, the site is reachable from any browser with no server to keep running.
+Because it is a Worker, the rewriting-proxy part of the site is reachable from any browser with no
+server to keep running. **Real browser mode is not available on the Worker** — Chromium cannot run
+inside a Cloudflare Worker. Use the local Node server for YouTube/ChatGPT mode.
 
 ## Project files
 
 - `worker.js` — proxy core and Cloudflare Worker entry point
-- `server.js` — Node HTTP adapter around `worker.js`
+- `server.js` — Node HTTP adapter around `worker.js`, plus the browser-mode routes
+- `browser.js` — Node-only Chromium/CDP real browser mode with screenshot streaming and input forwarding
 - `public/index.html` — homepage / search page
 - `public/style.css` — homepage styling
 - `public/toolbar.js` — navigation bar injected into proxied pages
@@ -40,6 +99,14 @@ Because it is a Worker, the site is reachable from any browser with no server to
 ## How to use
 
 - Type a search term or paste a full URL into the box on the home page.
+- For YouTube, ChatGPT, Google or any site that breaks in rewriting mode, click **Open in Chrome
+  mode** on the home page. The canvas fills the **entire tab** with no margins, and the headless
+  Chromium window is resized so its viewport matches your screen exactly. Every frame is drawn at a
+  1:1 size with the canvas — no stretching, no upscaling, no letterboxing — so sites look the same
+  size as they would in a normal browser. The toolbar auto-hides at the bottom so it does
+  not cover site controls — move the mouse to the bottom edge to bring it back, or use the
+  fullscreen button to fill the physical screen. Click the canvas first, then type — keystrokes go
+  to the real browser.
 - Searches return a **results page hosted by the proxy itself** (DuckDuckGo or Bing), with title,
   URL and snippet for each hit. Clicking a result opens it through the proxy.
 - Every link stays inside this tab. The black bar at the **bottom** of each page has back, reload,
@@ -90,13 +157,15 @@ Because it is a Worker, the site is reachable from any browser with no server to
 
 No proxy can make **every** site work. Some sites will still be broken or degraded because:
 
-- Heavy web apps (Google, YouTube, Facebook, Gmail, banks) rely on cross-origin iframes,
-  service workers, extension-level APIs and browser-level features that a rewriting proxy cannot
-  fully emulate. Some real-time features now work over the WebSocket bridge, but not every app.
-- Some sites block proxies using TLS/HTTP2 fingerprinting, JavaScript challenges, or the fact that
-  the hosted Worker runs from a datacenter IP range. Changing headers cannot fix any of those.
-  Defeating those checks would require a real browser and a residential IP, which is outside the
-  scope of a proxy. No proxy can honestly guarantee that *every* site loads.
+- In rewriting mode, heavy web apps (Google, YouTube, Facebook, Gmail, banks) rely on cross-origin
+  iframes, service workers, extension-level APIs and browser-level features that cannot be fully
+  emulated. Use **real browser mode** for those sites; the WebSocket bridge helps, but does not fix,
+  rewriting mode's fundamental limits.
+- Some sites block the rewriting proxy using TLS/HTTP2 fingerprinting, JavaScript challenges, or
+  the fact that the hosted Worker runs from a datacenter IP range. Changing headers cannot fix any
+  of those. Real browser mode avoids the *rewriting-proxy* fingerprint, but it still runs from this
+  machine's IP and advanced anti-bot systems can still detect headless Chrome. Nothing here can
+  honestly guarantee that *every* site loads.
 - Sites with hard bot protection (banks, Gmail, streaming, many social networks) will still resist.
   When that happens the proxy now shows a banner explaining it, with a link to the original site.
 - Video/audio range requests and WebRTC are not specially handled.
@@ -123,6 +192,10 @@ It works best on normal content sites: Wikipedia, news sites, blogs, docs, DDG/B
 
 ## Security
 
-Loopback, private, link-local and cloud-metadata hostnames are blocked before any fetch, including
-on redirects. The hosted build has **no authentication** — anyone who has the URL can use it, so
-think twice before sharing it widely. The local server is meant for personal use on your own machine.
+The **rewriting proxy** blocks loopback, private, link-local and cloud-metadata hostnames before
+any fetch, including on redirects. The hosted build has **no authentication** — anyone who has the
+URL can use it, so think twice before sharing it widely.
+
+Real browser mode is different: it is an actual browser and can reach whatever that machine can
+reach, including localhost. Keep the Node server bound to your own machine/network and do not expose
+`/b/new` publicly without authentication. It is meant for personal use.

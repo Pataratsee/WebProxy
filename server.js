@@ -14,6 +14,13 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import worker, { isBlockedTarget } from './worker.js';
+import {
+  attachBrowserWS,
+  browserErrorPage,
+  browserPage,
+  browserSessionExists,
+  createBrowserSession
+} from './browser.js';
 
 const PUBLIC_DIR = path.resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 
@@ -301,11 +308,57 @@ function handleUpgrade(req, socket) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Real-browser mode (Node only)                                       */
+/* ------------------------------------------------------------------ */
+
+function sendHtml(res, status, body) {
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store'
+  });
+  res.end(body);
+}
+
+async function handleBrowserRoute(req, res) {
+  let url;
+  try {
+    url = new URL('http://' + (req.headers.host || 'localhost') + (req.url || '/'));
+  } catch (_) {
+    return false;
+  }
+
+  if (url.pathname === '/b/new') {
+    const target = url.searchParams.get('url') || 'https://www.youtube.com/';
+    try {
+      const id = await createBrowserSession(target);
+      res.writeHead(302, { Location: '/b/' + id, 'cache-control': 'no-store' });
+      res.end();
+    } catch (err) {
+      sendHtml(res, 500, browserErrorPage(err && err.message ? err.message : String(err)));
+    }
+    return true;
+  }
+
+  const match = /^\/b\/([A-Za-z0-9]+)$/.exec(url.pathname);
+  if (match) {
+    if (!browserSessionExists(match[1])) {
+      sendHtml(res, 404, browserErrorPage('That browser session has expired. Open a new one from the home page.'));
+    } else {
+      sendHtml(res, 200, browserPage(match[1]));
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/* ------------------------------------------------------------------ */
 /* Server                                                              */
 /* ------------------------------------------------------------------ */
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (await handleBrowserRoute(req, res)) return;
     const request = await toRequest(req);
     const response = await worker.fetch(request, ASSET_ENV);
     await sendResponse(res, response, request.method);
@@ -317,8 +370,22 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.on('upgrade', handleUpgrade);
+server.on('upgrade', (req, socket) => {
+  let pathname;
+  try {
+    pathname = new URL('http://' + (req.headers.host || 'localhost') + req.url).pathname;
+  } catch (_) {
+    socket.destroy();
+    return;
+  }
+  if (pathname.startsWith('/bws/')) {
+    attachBrowserWS(req, socket);
+    return;
+  }
+  handleUpgrade(req, socket);
+});
 
 server.listen(PORT, HOST, () => {
   console.log('Web proxy running at http://localhost:' + PORT);
+  console.log('Real browser mode: /b/new?url=https://www.youtube.com/');
 });
