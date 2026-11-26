@@ -89,9 +89,10 @@ the contents of `public/` as static assets. The Worker serves `/`, `/style.css`,
 
 Because it is a Worker, the whole site is reachable from any browser with no server to keep running
 and no port to open. Full browser mode cannot run inside a Worker (Chromium is Node-only), so
-`/b/new` links on the hosted site redirect to the standard in-tab proxy; nothing on the deployed
-site asks visitors to install anything or run a local server. The Node server keeps full browser
-mode for anyone who runs the project on their own machine.
+`/b/new` on the hosted site redirects to the standard in-tab proxy; nothing on the deployed site
+asks visitors to install anything or run a local server. The Node server keeps real Chromium mode
+for anyone who runs the project on their own machine, which is the reliable way to open heavy apps
+such as YouTube and ChatGPT.
 
 ## About school web filters
 

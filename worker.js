@@ -816,16 +816,25 @@ const worker = {
       if (pathname === '/__wb/cookie') return await handleCookieWrite(request, url);
       if (pathname.startsWith('/ws/')) return await handleWebSocket(request, url);
 
-      // Full browser mode is local-only (Chromium cannot run in a Worker). The hosted
-      // site sends those links through the standard proxy, so using it never needs a
-      // local server or an open port.
+      // Full browser mode needs Node + Chromium, which a Cloudflare Worker cannot run.
+      // The hosted site opens those links in the in-tab proxy instead, so the button
+      // always works without a local server. The Node server keeps real Chromium mode.
       if (pathname === '/b/new' || pathname.startsWith('/b/') || pathname.startsWith('/bws/')) {
         const requested = (url.searchParams.get('url') || '').trim();
+        const aliases = {
+          youtube: 'https://www.youtube.com/',
+          chatgpt: 'https://chatgpt.com/',
+          google: 'https://www.google.com/'
+        };
         let location = '/';
         if (/^https?:\/\//i.test(requested)) {
           location = proxyUrl(requested);
+        } else if (aliases[requested.toLowerCase()]) {
+          location = proxyUrl(aliases[requested.toLowerCase()]);
         } else if (/^[\w.-]+(\.[\w-]+)+/i.test(requested)) {
           location = proxyUrl('https://' + requested);
+        } else if (requested) {
+          location = '/s?q=' + encodeURIComponent(requested);
         }
         return new Response(null, {
           status: 302,

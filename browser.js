@@ -224,9 +224,16 @@ async function chromeUserAgent(cdp) {
   }
 }
 
+const SITE_ALIASES = {
+  youtube: 'https://www.youtube.com/',
+  chatgpt: 'https://chatgpt.com/',
+  google: 'https://www.google.com/'
+};
+
 function safeUrl(input) {
-  if (!input) return 'https://www.youtube.com/';
+  if (!input) return SITE_ALIASES.youtube;
   const value = String(input).trim();
+  if (SITE_ALIASES[value.toLowerCase()]) return SITE_ALIASES[value.toLowerCase()];
   try {
     const url = new URL(value);
     if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
