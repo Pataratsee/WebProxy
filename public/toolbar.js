@@ -305,6 +305,38 @@
     };
   }
 
+  // Page code inspects its own script URL: YouTube rejects a script whose src
+  // does not contain '/_/js/' and '/k=' (its minified validator). The proxy
+  // path percent-encodes the slashes, so report an equivalent proxy URL with
+  // readable slashes — still same-origin and still handled by /p/, but it
+  // passes such checks without exposing the site's real URL.
+  function readableProxyUrl(value) {
+    try {
+      var u = new URL(value, location.href);
+      if (u.origin !== location.origin || u.pathname.indexOf('/p/') !== 0) return null;
+      return u.origin + '/p/' + u.pathname.slice(3).replace(/%2F/gi, '/').replace(/%3D/gi, '=');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  try {
+    var scriptSrcDesc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+    if (scriptSrcDesc && scriptSrcDesc.get) {
+      Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+        get: function () {
+          var value = scriptSrcDesc.get.call(this);
+          return readableProxyUrl(value) || value;
+        },
+        set: scriptSrcDesc.set
+          ? function (value) { scriptSrcDesc.set.call(this, mapAttrValue('src', value)); }
+          : undefined,
+        configurable: true,
+        enumerable: scriptSrcDesc.enumerable
+      });
+    }
+  } catch (e) {}
+
   function wrapGlobal(name) {
     var Orig = window[name];
     if (typeof Orig !== 'function') return;
@@ -450,8 +482,12 @@
 
   // SPA routing: map pushState/replaceState URLs onto proxy URLs so a reload
   // still resolves, and keep the emulated location in sync.
-  var origPushState = history.pushState;
-  var origReplaceState = history.replaceState;
+  // Patch the prototype, not the instance: page code that reaches the native
+  // methods through History.prototype (or history.constructor.prototype) would
+  // otherwise bypass the mapping and rewrite the tab URL to a bare path such as
+  // '/', which then reloads our homepage instead of the proxied site.
+  var origPushState = History.prototype.pushState;
+  var origReplaceState = History.prototype.replaceState;
 
   function mappedStateUrl(u) {
     if (u == null || u === '') return null;
@@ -469,11 +505,11 @@
     }
   }
 
-  history.pushState = function (state, title, url) {
+  History.prototype.pushState = function (state, title, url) {
     var mapped = mappedStateUrl(url);
     return origPushState.call(this, state, title, mapped || location.href);
   };
-  history.replaceState = function (state, title, url) {
+  History.prototype.replaceState = function (state, title, url) {
     var mapped = mappedStateUrl(url);
     return origReplaceState.call(this, state, title, mapped || location.href);
   };

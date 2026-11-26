@@ -186,7 +186,7 @@ function toolbarScript(pageUrl, session) {
   const cookies = session ? buildCookieHeader(session.jar, u.hostname, u.pathname) : '';
   return '<script>window.__WB_REAL_BASE = ' + JSON.stringify(pageUrl) +
          ';window.__WB_COOKIES = ' + JSON.stringify(cookies) + ';</script>\n' +
-         '<script src="/toolbar.js?v=2"></script>\n';
+         '<script src="/toolbar.js?v=6"></script>\n';
 }
 
 function toolbarHtml() {
@@ -344,14 +344,31 @@ function rewriteJsSafe(js, pageUrl) {
   // Origin emulation: code that reads location.* or document.baseURI sees the
   // proxy origin otherwise, so it builds URLs that point back here. Route
   // those reads through the emulated location object supplied by toolbar.js.
-  out = out.replace(/(\bwindow\s*\.\s*|\bdocument\s*\.\s*)location\b/g, 'globalThis.__WB_LOCATION');
+  // Cover every common global path to the location object, including chained
+  // forms like `window.top.location` and `globalThis.location`. Missing
+  // `globalThis`/`top`/`self` let page code read the real proxy URL and
+  // navigate the tab away from the proxy (YouTube did exactly that).
+  out = out.replace(
+    /(?<![\w.$])(?:window|document|self|top|parent|globalThis)(?:\s*\??\.\s*(?:window|document|self|top|parent|globalThis))*\s*\??\.\s*location\b/g,
+    'globalThis.__WB_LOCATION');
   out = out.replace(/(?<![\w.$])location\s*\./g, 'globalThis.__WB_LOCATION.');
   out = out.replace(/\bdocument\s*\.\s*(baseURI|URL)\b/g, 'globalThis.__WB_REAL_BASE');
 
   // Dynamic import() resolves against the proxy document URL. Send the
   // specifier through the runtime helper, which rebases it on the real site.
+  // `import` can also be a METHOD name (Polymer declares `static import(v, w)
+  // {...}`), so only rewrite real calls: rewriting a method definition turns
+  // `static import(` into `static globalThis.__WB_IMPORT(`, which is a syntax
+  // error that stops the entire bundle from parsing.
   out = out.replace(/\bimport\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,
-    (m, expr) => 'globalThis.__WB_IMPORT(' + expr + ', ' + JSON.stringify(pageUrl) + ')');
+    (match, expr, offset, source) => {
+      const before = source.slice(Math.max(0, offset - 40), offset);
+      const after = source.slice(offset + match.length, offset + match.length + 16);
+      if (/\.\s*$/.test(before)) return match;                            // obj.import(...)
+      if (/\b(?:static|get|set|async)\s+$/.test(before)) return match;     // static import(...) {...}
+      if (/^\s*\{/.test(after)) return match;                             // method body follows
+      return 'globalThis.__WB_IMPORT(' + expr + ', ' + JSON.stringify(pageUrl) + ')';
+    });
 
   return out;
 }
@@ -1008,5 +1025,5 @@ const worker = {
   }
 };
 
-export { isBlockedTarget };
+export { isBlockedTarget, rewriteJsSafe };
 export default worker;
