@@ -12,13 +12,14 @@ It has two modes:
   forwards mouse/keyboard input. YouTube, ChatGPT, Google and other heavy apps see a real Chrome
   browser instead of a proxy. This mode is **Node-only**.
 
-The hosted site uses the rewriting proxy only, so it runs entirely in the browser with no local
-server and no port to open. Real browser mode is an optional extra when you run the project
-yourself.
+The hosted site does all of the work on its own server: every request is fetched, rewritten and
+streamed back from the Cloudflare Worker, so visitors need no local server, no port and no install.
+Real browser mode is an optional extra when you run the project yourself.
 
 The proxy logic lives in one module and runs in two places:
 
-- `worker.js` — the core, exported as a Cloudflare Worker `fetch` handler (this is what is hosted)
+- `worker.js` — the core, exported as a Cloudflare Worker `fetch` handler (this is the server that
+  runs online and is uploaded with the site)
 - `server.js` — a Node adapter that serves the site and owns real browser mode
 
 ## Run locally

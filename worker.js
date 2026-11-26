@@ -486,39 +486,45 @@ function blockedNotice(finalUrl) {
 
 async function rewriteResponse(response, finalUrl, method, session) {
   const contentType = response.headers.get('content-type') || 'application/octet-stream';
-  const raw = new Uint8Array(await response.arrayBuffer());
-  const decoder = new TextDecoder('utf-8');
-  let output = raw;
-  let textual = false;
-
-  if (/text\/html/i.test(contentType)) {
-    textual = true;
-    let html = rewriteHtml(decoder.decode(raw), finalUrl, session);
-    if (isChallengePage(html) || response.status === 403 || response.status === 429) {
-      html = blockedNotice(finalUrl) + html;
-    }
-    output = new TextEncoder().encode(html);
-  } else if (/text\/css/i.test(contentType)) {
-    textual = true;
-    output = new TextEncoder().encode(rewriteCssUrls(decoder.decode(raw), finalUrl));
-  } else if (/javascript/i.test(contentType)) {
-    textual = true;
-    output = new TextEncoder().encode(rewriteJsSafe(decoder.decode(raw), finalUrl));
-  }
+  const bodyless = method === 'HEAD' || response.status === 204 || response.status === 304;
 
   const headers = new Headers();
   for (const [key, value] of response.headers) {
     if (SKIP_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
     headers.set(key, value);
   }
-  if (textual || /text\/(html|css)|javascript/i.test(contentType)) {
-    headers.set('content-type', contentType.replace(/;\s*charset=[^;]+/i, '') + '; charset=utf-8');
-  }
-  headers.set('cache-control', 'no-store');
   headers.set('x-wb-real-url', finalUrl);
   if (session.setCookie) headers.append('set-cookie', session.setCookie);
 
-  const bodyless = method === 'HEAD' || response.status === 204 || response.status === 304;
+  // Binary payloads (video, audio, images, fonts, downloads) are streamed
+  // straight through: buffering them makes the tab wait for the whole file
+  // before anything renders and can exceed the Worker's memory limit on large
+  // media. Their upstream cache headers are kept, so repeated page loads do
+  // not re-download every asset.
+  if (!/text\/html|text\/css|javascript/i.test(contentType)) {
+    if (!headers.has('cache-control')) headers.set('cache-control', 'no-store');
+    return new Response(bodyless ? null : response.body, { status: response.status, headers });
+  }
+
+  const raw = new Uint8Array(await response.arrayBuffer());
+  const decoder = new TextDecoder('utf-8');
+  let output;
+
+  if (/text\/html/i.test(contentType)) {
+    let html = rewriteHtml(decoder.decode(raw), finalUrl, session);
+    if (isChallengePage(html) || response.status === 403 || response.status === 429) {
+      html = blockedNotice(finalUrl) + html;
+    }
+    output = new TextEncoder().encode(html);
+  } else if (/text\/css/i.test(contentType)) {
+    output = new TextEncoder().encode(rewriteCssUrls(decoder.decode(raw), finalUrl));
+  } else {
+    output = new TextEncoder().encode(rewriteJsSafe(decoder.decode(raw), finalUrl));
+  }
+
+  headers.set('content-type', contentType.replace(/;\s*charset=[^;]+/i, '') + '; charset=utf-8');
+  headers.set('cache-control', 'no-store');
+
   return new Response(bodyless ? null : output, { status: response.status, headers });
 }
 
