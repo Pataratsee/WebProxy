@@ -603,6 +603,24 @@
     reportGpu();
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
-  else setup();
+  // The bar is injected at the top of <body>, so it exists long before
+  // DOMContentLoaded. Big pages can sit in "loading" for many seconds (or never
+  // finish a blocked resource), and waiting for that event leaves the address
+  // bar empty and every button dead. Start as soon as the bar is in the DOM.
+  var started = false;
+  function start() {
+    if (started || !document.getElementById('__wb_bar')) return;
+    started = true;
+    setup();
+  }
+
+  start();
+  if (!started) {
+    document.addEventListener('DOMContentLoaded', start);
+    var attempts = 0;
+    var timer = setInterval(function () {
+      start();
+      if (started || ++attempts > 200) clearInterval(timer);
+    }, 50);
+  }
 })();

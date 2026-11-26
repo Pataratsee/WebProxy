@@ -12,7 +12,12 @@
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
            '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 const MAX_REDIRECTS = 12;
-const TIMEOUT_MS = 30000;
+// Time allowed to receive response HEADERS. Once headers are in, streaming
+// bodies (video, audio, big downloads) are no longer aborted, so long media
+// is not cut off mid-transfer.
+const HEADER_TIMEOUT_MS = 30000;
+// Time allowed to read a body that has to be buffered for rewriting.
+const BODY_TIMEOUT_MS = 90000;
 const MAX_SESSIONS = 2000;
 
 class HttpError extends Error {
@@ -181,7 +186,7 @@ function toolbarScript(pageUrl, session) {
   const cookies = session ? buildCookieHeader(session.jar, u.hostname, u.pathname) : '';
   return '<script>window.__WB_REAL_BASE = ' + JSON.stringify(pageUrl) +
          ';window.__WB_COOKIES = ' + JSON.stringify(cookies) + ';</script>\n' +
-         '<script src="/toolbar.js"></script>\n';
+         '<script src="/toolbar.js?v=2"></script>\n';
 }
 
 function toolbarHtml() {
@@ -413,6 +418,8 @@ async function fetchUpstream(target, method, bodyBuffer, reqHeaders, session) {
     const cookie = buildCookieHeader(session.jar, parsed.hostname, parsed.pathname);
     if (cookie) headers.cookie = cookie;
 
+    const controller = new AbortController();
+    const headerTimer = setTimeout(() => controller.abort(), HEADER_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(url, {
@@ -420,11 +427,14 @@ async function fetchUpstream(target, method, bodyBuffer, reqHeaders, session) {
         headers,
         body: (curBody && curBody.byteLength && curMethod !== 'GET' && curMethod !== 'HEAD') ? curBody : undefined,
         redirect: 'manual',
-        signal: AbortSignal.timeout(TIMEOUT_MS)
+        signal: controller.signal
       });
     } catch (err) {
       throw new HttpError(502, 'Could not reach ' + parsed.host + ' (' + (err && err.message ? err.message : err) + ')');
+    } finally {
+      clearTimeout(headerTimer);
     }
+    const abortBody = () => { try { controller.abort(); } catch (_) {} };
 
     const setCookies = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
@@ -439,11 +449,12 @@ async function fetchUpstream(target, method, bodyBuffer, reqHeaders, session) {
         curMethod = 'GET';
         curBody = null;
       }
+      abortBody();
       try { await response.arrayBuffer(); } catch (_) {}
       continue;
     }
 
-    return { response, finalUrl: url };
+    return { response, finalUrl: url, abortBody };
   }
 
   throw new HttpError(502, 'Too many redirects');
@@ -484,7 +495,7 @@ function blockedNotice(finalUrl) {
     '</div>';
 }
 
-async function rewriteResponse(response, finalUrl, method, session) {
+async function rewriteResponse(response, finalUrl, method, session, abortBody) {
   const contentType = response.headers.get('content-type') || 'application/octet-stream';
   const bodyless = method === 'HEAD' || response.status === 204 || response.status === 304;
 
@@ -506,7 +517,15 @@ async function rewriteResponse(response, finalUrl, method, session) {
     return new Response(bodyless ? null : response.body, { status: response.status, headers });
   }
 
-  const raw = new Uint8Array(await response.arrayBuffer());
+  // Buffered bodies still need a ceiling, but it is much longer than the
+  // header timeout and never applies to streamed media.
+  const bodyTimer = bodyless ? null : setTimeout(abortBody, BODY_TIMEOUT_MS);
+  let raw;
+  try {
+    raw = new Uint8Array(await response.arrayBuffer());
+  } finally {
+    if (bodyTimer) clearTimeout(bodyTimer);
+  }
   const decoder = new TextDecoder('utf-8');
   let output;
 
@@ -724,11 +743,11 @@ async function handleProxy(request, url, target) {
 
   const isBodyless = request.method === 'GET' || request.method === 'HEAD';
   const body = isBodyless ? null : await request.arrayBuffer();
-  const { response, finalUrl } = await fetchUpstream(
+  const { response, finalUrl, abortBody } = await fetchUpstream(
     target, request.method, body, request.headers, session
   );
 
-  return rewriteResponse(response, finalUrl, request.method, session);
+  return rewriteResponse(response, finalUrl, request.method, session, abortBody);
 }
 
 async function handleCookieWrite(request, url) {
