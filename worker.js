@@ -800,6 +800,123 @@ async function handleWebSocket(request, url) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+/* ------------------------------------------------------------------ */
+/* Cloud Chromium                                                      */
+/* ------------------------------------------------------------------ */
+
+// Cloudflare Browser Run provides a real remote Chrome and a hosted
+// interactive Live View. It needs two Worker secrets (CF_ACCOUNT_ID,
+// CF_API_TOKEN); without them the site keeps using the in-tab proxy.
+const CLOUD_BROWSER_ALIASES = {
+  youtube: 'https://www.youtube.com/',
+  chatgpt: 'https://chatgpt.com/',
+  google: 'https://www.google.com/'
+};
+
+function resolveBrowserTarget(requested) {
+  const value = String(requested || '').trim();
+  if (!value) return '';
+  const alias = CLOUD_BROWSER_ALIASES[value.toLowerCase()];
+  if (alias) return alias;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^[\w.-]+(\.[\w-]+)+/i.test(value)) return 'https://' + value;
+  return '';
+}
+
+function absoluteLiveView(url) {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('//')) return 'https:' + url;
+  return 'https://live.browser.run/' + url.replace(/^\/+/, '');
+}
+
+async function navigateCloudTarget(target, pageUrl) {
+  if (!target || !pageUrl) return;
+  let response;
+  try {
+    response = await fetch(target.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:'), {
+      headers: { upgrade: 'websocket', connection: 'Upgrade' }
+    });
+  } catch (_) {
+    return;
+  }
+  const socket = response && response.webSocket;
+  if (!socket) return;
+  socket.accept();
+
+  const finished = new Promise((resolve) => {
+    const timer = setTimeout(resolve, 4000);
+    const done = () => { clearTimeout(timer); resolve(); };
+    socket.addEventListener('message', (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message && message.id === 1) done();
+      } catch (_) {}
+    });
+    socket.addEventListener('close', done);
+    socket.addEventListener('error', done);
+  });
+
+  try {
+    socket.send(JSON.stringify({ id: 1, method: 'Page.navigate', params: { url: pageUrl } }));
+  } catch (_) {}
+  await finished;
+  try { socket.close(); } catch (_) {}
+}
+
+async function startCloudBrowser(requested, env) {
+  const pageUrl = resolveBrowserTarget(requested);
+  if (!pageUrl) return '';
+
+  const accountId = String(env.CF_ACCOUNT_ID || '').trim();
+  const token = String(env.CF_API_TOKEN || '').trim();
+  if (!accountId || !token) return '';
+
+  const base = 'https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(accountId);
+  let session = null;
+  for (const endpoint of ['browser-run', 'browser-rendering']) {
+    const response = await fetch(
+      base + '/' + endpoint + '/devtools/browser?keep_alive=600000&targets=true',
+      { method: 'POST', headers: { authorization: 'Bearer ' + token } }
+    );
+    if (response.status === 404) continue;
+    if (!response.ok) throw new Error('Cloud browser start failed (' + response.status + ')');
+    const payload = await response.json();
+    session = payload && (payload.result || payload);
+    break;
+  }
+  if (!session || !session.sessionId) throw new Error('Cloud browser returned no session');
+
+  const targets = Array.isArray(session.targets) ? session.targets : [];
+  const target = targets.find((t) => t && t.type === 'page' && t.devtoolsFrontendUrl) ||
+                 targets.find((t) => t && t.type === 'page') || targets[0];
+  if (!target) throw new Error('Cloud browser returned no page');
+
+  await navigateCloudTarget(target.webSocketDebuggerUrl, pageUrl);
+
+  let live = '';
+  try {
+    const response = await fetch(
+      base + '/browser-run/devtools/browser/' + encodeURIComponent(session.sessionId) + '/live_view',
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer ' + token,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ mode: 'tab', expiresInMs: 3600000 })
+      }
+    );
+    if (response.ok) {
+      const payload = await response.json();
+      const view = payload && (payload.result || payload);
+      live = absoluteLiveView(view && view.devtoolsFrontendUrl);
+    }
+  } catch (_) {}
+
+  return live || absoluteLiveView(target.devtoolsFrontendUrl);
+}
+
 async function serveAsset(request, env, pathname) {
   if (!env || !env.ASSETS) return textResponse(404, 'Not found');
   return env.ASSETS.fetch(new Request(new URL(pathname, request.url), { method: 'GET' }));
@@ -816,26 +933,29 @@ const worker = {
       if (pathname === '/__wb/cookie') return await handleCookieWrite(request, url);
       if (pathname.startsWith('/ws/')) return await handleWebSocket(request, url);
 
-      // Full browser mode needs Node + Chromium, which a Cloudflare Worker cannot run.
-      // The hosted site opens those links in the in-tab proxy instead, so the button
-      // always works without a local server. The Node server keeps real Chromium mode.
+      // Full browser mode uses Cloudflare Browser Run when its two secrets are
+      // configured. Without them (or if the cloud session fails), those links fall
+      // back to the in-tab proxy so the button never becomes a dead end.
       if (pathname === '/b/new' || pathname.startsWith('/b/') || pathname.startsWith('/bws/')) {
         const requested = (url.searchParams.get('url') || '').trim();
-        const aliases = {
-          youtube: 'https://www.youtube.com/',
-          chatgpt: 'https://chatgpt.com/',
-          google: 'https://www.google.com/'
-        };
-        let location = '/';
-        if (/^https?:\/\//i.test(requested)) {
-          location = proxyUrl(requested);
-        } else if (aliases[requested.toLowerCase()]) {
-          location = proxyUrl(aliases[requested.toLowerCase()]);
-        } else if (/^[\w.-]+(\.[\w-]+)+/i.test(requested)) {
-          location = proxyUrl('https://' + requested);
-        } else if (requested) {
-          location = '/s?q=' + encodeURIComponent(requested);
+
+        if (requested && env && env.CF_ACCOUNT_ID && env.CF_API_TOKEN) {
+          try {
+            const live = await startCloudBrowser(requested, env);
+            if (live) {
+              return new Response(null, {
+                status: 302,
+                headers: { location: live, 'cache-control': 'no-store' }
+              });
+            }
+          } catch (_) {
+            // Fall through to the proxy.
+          }
         }
+
+        const target = resolveBrowserTarget(requested);
+        const location = target ? proxyUrl(target) :
+          (requested ? '/s?q=' + encodeURIComponent(requested) : '/');
         return new Response(null, {
           status: 302,
           headers: { location, 'cache-control': 'no-store' }

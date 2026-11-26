@@ -88,11 +88,18 @@ the contents of `public/` as static assets. The Worker serves `/`, `/style.css`,
 `/favicon.ico` from those assets and handles `/s` (search) and `/p/<encoded-url>` (proxy) itself.
 
 Because it is a Worker, the whole site is reachable from any browser with no server to keep running
-and no port to open. Full browser mode cannot run inside a Worker (Chromium is Node-only), so
-`/b/new` on the hosted site redirects to the standard in-tab proxy; nothing on the deployed site
-asks visitors to install anything or run a local server. The Node server keeps real Chromium mode
-for anyone who runs the project on their own machine, which is the reliable way to open heavy apps
-such as YouTube and ChatGPT.
+and no port to open. Full browser mode on the hosted site uses **Cloudflare Browser Run**, which
+provides a real remote Chrome and an interactive Live View. Add two Worker secrets to enable it:
+
+- `CF_ACCOUNT_ID` — your Cloudflare account ID
+- `CF_API_TOKEN` — an API token with **Browser Rendering - Edit** permission
+
+With both secrets present, `/b/new` creates a browser session, navigates it to the requested URL,
+and redirects to Cloudflare's Live View. If the secrets are missing or the API call fails, the site
+falls back to the in-tab proxy. The Workers Free plan includes 10 browser-minutes per day; sessions
+end after 10 minutes without activity. Browser Run is always identified as an automated datacenter
+browser, so sites with hard bot protection may still refuse it. The local Node server remains the
+option with the most control over the Chrome binary and launch flags.
 
 ## About school web filters
 
