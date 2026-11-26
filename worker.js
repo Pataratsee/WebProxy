@@ -816,21 +816,21 @@ const worker = {
       if (pathname === '/__wb/cookie') return await handleCookieWrite(request, url);
       if (pathname.startsWith('/ws/')) return await handleWebSocket(request, url);
 
-      // Real browser mode needs Chromium, so it only exists in the Node server.
+      // Full browser mode is local-only (Chromium cannot run in a Worker). The hosted
+      // site sends those links through the standard proxy, so using it never needs a
+      // local server or an open port.
       if (pathname === '/b/new' || pathname.startsWith('/b/') || pathname.startsWith('/bws/')) {
-        const requested = url.searchParams.get('url') || '';
-        const fallback = /^https?:\/\//i.test(requested)
-          ? '<p><a href="' + escapeHtml(proxyUrl(requested)) + '">Open this address in standard web mode</a></p>'
-          : '';
-        return new Response(
-          '<!doctype html><meta charset="utf-8"><title>Browser mode unavailable</title>' +
-          '<h1>Browser mode unavailable</h1>' +
-          '<p>Full browser mode needs the local Node server with Chromium installed. ' +
-          'Run <code>PORT=3456 npm start</code> and open <code>http://localhost:3456</code>.</p>' +
-          fallback +
-          '<p><a href="/">Back to Classroom Browser</a></p>',
-          { status: 501, headers: { 'content-type': 'text/html; charset=utf-8' } }
-        );
+        const requested = (url.searchParams.get('url') || '').trim();
+        let location = '/';
+        if (/^https?:\/\//i.test(requested)) {
+          location = proxyUrl(requested);
+        } else if (/^[\w.-]+(\.[\w-]+)+/i.test(requested)) {
+          location = proxyUrl('https://' + requested);
+        }
+        return new Response(null, {
+          status: 302,
+          headers: { location, 'cache-control': 'no-store' }
+        });
       }
 
       if (pathname.startsWith('/p/')) {

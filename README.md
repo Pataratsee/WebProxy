@@ -12,6 +12,10 @@ It has two modes:
   forwards mouse/keyboard input. YouTube, ChatGPT, Google and other heavy apps see a real Chrome
   browser instead of a proxy. This mode is **Node-only**.
 
+The hosted site uses the rewriting proxy only, so it runs entirely in the browser with no local
+server and no port to open. Real browser mode is an optional extra when you run the project
+yourself.
+
 The proxy logic lives in one module and runs in two places:
 
 - `worker.js` — the core, exported as a Cloudflare Worker `fetch` handler (this is what is hosted)
@@ -83,9 +87,11 @@ Live at **https://webproxy-5ywe8a.freebuff.site** (Cloudflare Worker via Freebuf
 the contents of `public/` as static assets. The Worker serves `/`, `/style.css`, `/toolbar.js` and
 `/favicon.ico` from those assets and handles `/s` (search) and `/p/<encoded-url>` (proxy) itself.
 
-Because it is a Worker, the rewriting-proxy part of the site is reachable from any browser with no
-server to keep running. **Real browser mode is not available on the Worker** — Chromium cannot run
-inside a Cloudflare Worker. Use the local Node server for full browser mode.
+Because it is a Worker, the whole site is reachable from any browser with no server to keep running
+and no port to open. Full browser mode cannot run inside a Worker (Chromium is Node-only), so
+`/b/new` links on the hosted site redirect to the standard in-tab proxy; nothing on the deployed
+site asks visitors to install anything or run a local server. The Node server keeps full browser
+mode for anyone who runs the project on their own machine.
 
 ## About school web filters
 
