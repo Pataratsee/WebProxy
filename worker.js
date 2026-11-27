@@ -186,7 +186,7 @@ function toolbarScript(pageUrl, session) {
   const cookies = session ? buildCookieHeader(session.jar, u.hostname, u.pathname) : '';
   return '<script>window.__WB_REAL_BASE = ' + JSON.stringify(pageUrl) +
          ';window.__WB_COOKIES = ' + JSON.stringify(cookies) + ';</script>\n' +
-         '<script src="/toolbar.js?v=6"></script>\n';
+         '<script src="/toolbar.js?v=7"></script>\n';
 }
 
 function toolbarHtml() {

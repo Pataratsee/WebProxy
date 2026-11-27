@@ -305,38 +305,6 @@
     };
   }
 
-  // Page code inspects its own script URL: YouTube rejects a script whose src
-  // does not contain '/_/js/' and '/k=' (its minified validator). The proxy
-  // path percent-encodes the slashes, so report an equivalent proxy URL with
-  // readable slashes — still same-origin and still handled by /p/, but it
-  // passes such checks without exposing the site's real URL.
-  function readableProxyUrl(value) {
-    try {
-      var u = new URL(value, location.href);
-      if (u.origin !== location.origin || u.pathname.indexOf('/p/') !== 0) return null;
-      return u.origin + '/p/' + u.pathname.slice(3).replace(/%2F/gi, '/').replace(/%3D/gi, '=');
-    } catch (e) {
-      return null;
-    }
-  }
-
-  try {
-    var scriptSrcDesc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
-    if (scriptSrcDesc && scriptSrcDesc.get) {
-      Object.defineProperty(HTMLScriptElement.prototype, 'src', {
-        get: function () {
-          var value = scriptSrcDesc.get.call(this);
-          return readableProxyUrl(value) || value;
-        },
-        set: scriptSrcDesc.set
-          ? function (value) { scriptSrcDesc.set.call(this, mapAttrValue('src', value)); }
-          : undefined,
-        configurable: true,
-        enumerable: scriptSrcDesc.enumerable
-      });
-    }
-  } catch (e) {}
-
   function wrapGlobal(name) {
     var Orig = window[name];
     if (typeof Orig !== 'function') return;
